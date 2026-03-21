@@ -1,0 +1,48 @@
+sources:
+  rss:
+    - name: "Anthropic News"
+      url: "https://www.anthropic.com/rss.xml"
+    - name: "Anthropic Blog"
+      url: "https://www.anthropic.com/blog/rss.xml"
+    - name: "OpenAI Blog"
+      url: "https://openai.com/blog/rss.xml"
+    - name: "Google AI Blog"
+      url: "https://blog.google/technology/ai/rss/"
+    - name: "Hacker News AI"
+      url: "https://hnrss.org/newest?q=anthropic+OR+claude+OR+openai+OR+gemini&points=50"
+  web:
+    - name: "Anthropic News"
+      url: "https://www.anthropic.com/news"
+    - name: "Claude Code Changelog"
+      url: "https://code.claude.com/docs/en/changelog"
+    - name: "Claude Release Notes"
+      url: "https://support.claude.com/en/articles/12138966-release-notes"
+
+keywords:
+  - claude
+  - anthropic
+  - opus
+  - sonnet
+  - haiku
+  - claude code
+  - mcp
+  - openai
+  - gpt
+  - gemini
+  - cursor
+  - windsurf
+  - copilot
+  - ai coding
+  - supabase
+  - vercel
+
+analysis:
+  model: "gemini-2.5-flash"
+  max_articles: 15
+  max_items: 6
+
+supabase:
+  url: "https://rxylsjqviebynegvpkem.supabase.co"
+
+dedup:
+  max_cache_size: 500

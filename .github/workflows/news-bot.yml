@@ -1,0 +1,49 @@
+name: AI News Bot
+
+on:
+  schedule:
+    - cron: '3 0 * * *'       # Daily 9:03am KST (0:03 UTC)
+    - cron: '17 */3 * * *'    # Every 3 hours at :17
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode'
+        default: 'daily'
+        type: choice
+        options:
+          - daily
+          - realtime
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Determine mode
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ inputs.mode }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.schedule }}" = "3 0 * * *" ]; then
+            echo "mode=daily" >> $GITHUB_OUTPUT
+          else
+            echo "mode=realtime" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run AI News Bot
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: python -m src.main --mode ${{ steps.mode.outputs.mode }}
