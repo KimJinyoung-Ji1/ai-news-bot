@@ -65,7 +65,7 @@ def run(mode: str = "daily"):
             send_telegram(
                 f"AI 데일리 ({datetime.datetime.now().strftime('%Y-%m-%d')})\n\n"
                 f"새로운 적용 가능한 업데이트 없음.",
-                tg_token, tg_chat,
+                tg_token, tg_chat, message_thread_id=2,
             )
         dedup.mark_sent(new_hashes)
         print("=== No new articles ===")
@@ -111,7 +111,7 @@ def run(mode: str = "daily"):
             body += f"등록: [{nums}]번\n"
             body += "Claude Code에서 /directives 로 실행 가능"
 
-        send_telegram(header + body, tg_token, tg_chat)
+        send_telegram(header + body, tg_token, tg_chat, message_thread_id=2)
 
         # Directives 등록
         for idx, title, command, link in directive_items:
@@ -123,7 +123,7 @@ def run(mode: str = "daily"):
         lines = [f"AI 업데이트 ({now})\n"]
         for art in new_articles[:10]:
             lines.append(f"- {art['title'][:60]}")
-        send_telegram("\n".join(lines), tg_token, tg_chat)
+        send_telegram("\n".join(lines), tg_token, tg_chat, message_thread_id=2)
 
     # 중복방지 저장
     dedup.mark_sent(new_hashes)
