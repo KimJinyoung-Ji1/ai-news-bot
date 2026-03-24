@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '3 0 * * *'       # Daily 9:03am KST (0:03 UTC)
     - cron: '17 */3 * * *'    # Every 3 hours at :17
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'config.yml'
+      - '.github/workflows/**'
   workflow_dispatch:
     inputs:
       mode:

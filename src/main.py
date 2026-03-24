@@ -113,12 +113,14 @@ def run(mode: str = "daily"):
 
         send_telegram(header + body, tg_token, tg_chat, message_thread_id=2)
 
-        # Directives 등록
+        # Directives 등록 (실패해도 봇 동작에 영향 없음)
+        inserted = 0
         for idx, title, command, link in directive_items:
             note = f"AI뉴스봇 [{idx}]번 항목. 참고: {link}" if link else f"AI뉴스봇 [{idx}]번 항목"
-            insert_directive(f"[뉴스{idx}] {title}"[:30], command, note, sb_url, sb_key)
+            if insert_directive(f"[뉴스{idx}] {title}"[:30], command, note, sb_url, sb_key):
+                inserted += 1
         if directive_items:
-            print(f"Directives inserted: {len(directive_items)}")
+            print(f"Directives inserted: {inserted}/{len(directive_items)}")
     else:
         lines = [f"AI 업데이트 ({now})\n"]
         for art in new_articles[:10]:
