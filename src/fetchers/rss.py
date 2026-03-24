@@ -10,11 +10,11 @@ def fetch_rss_articles(sources: list) -> list:
             for entry in feed.entries[:10]:
                 title = entry.get("title", "").strip()
                 link = entry.get("link", "").strip()
-                summary = entry.get("summary", "")[:300].strip()
+                summary = entry.get("summary", "")[:600].strip()
                 if title and link:
                     articles.append({
                         "source": src["name"], "title": title, "link": link,
-                        "summary": BeautifulSoup(summary, "html.parser").get_text()[:200],
+                        "summary": BeautifulSoup(summary, "html.parser").get_text()[:400],
                         "date": entry.get("published", ""),
                     })
         except Exception as e:
