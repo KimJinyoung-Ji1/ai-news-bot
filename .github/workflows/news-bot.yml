@@ -52,4 +52,5 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_JI1_KEY: ${{ secrets.SUPABASE_JI1_KEY }}
         run: python -m src.main --mode ${{ steps.mode.outputs.mode }}

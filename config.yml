@@ -54,7 +54,10 @@ analysis:
   max_items: 6
 
 supabase:
+  # mongol-pm: dedup(news_bot_sent) 테이블용
   url: "https://rxylsjqviebynegvpkem.supabase.co"
+  # ji1-dashboard: shared_context(directive) 테이블용
+  ji1_url: "https://cewxkupsxchbztwoafvq.supabase.co"
 
 dedup:
   max_cache_size: 500

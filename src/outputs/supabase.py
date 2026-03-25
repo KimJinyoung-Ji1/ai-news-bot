@@ -1,33 +1,40 @@
 import requests
 
 
+# ji1-dashboard Supabase (shared_context 테이블)
+JI1_SUPABASE_URL = "https://cewxkupsxchbztwoafvq.supabase.co"
+
+
 def insert_directive(title: str, command: str, note: str,
                      supabase_url: str, anon_key: str) -> bool:
+    """AI 뉴스봇 directive를 logs.shared_context에 등록"""
     try:
         resp = requests.post(
-            f"{supabase_url}/rest/v1/directives",
+            f"{JI1_SUPABASE_URL}/rest/v1/shared_context",
             headers={
                 "apikey": anon_key,
                 "Authorization": f"Bearer {anon_key}",
                 "Content-Type": "application/json",
                 "Prefer": "return=minimal",
+                "Accept-Profile": "logs",
+                "Content-Profile": "logs",
             },
             json={
+                "category": "directive",
                 "title": title,
-                "command": command,
-                "target_project": "all",
-                "priority": "low",
-                "status": "pending",
+                "content": command,
+                "project": "all",
                 "source": "ai-news-bot",
-                "created_by": 5,
-                "sort_order": 90,
+                "is_active": True,
                 "note": note,
             },
             timeout=10,
         )
         ok = resp.status_code in (200, 201)
-        if not ok:
-            print(f"[Directive] FAIL ({resp.status_code}): {resp.text[:100]}")
+        if ok:
+            print(f"[Directive] OK: {title[:40]}")
+        else:
+            print(f"[Directive] FAIL ({resp.status_code}): {resp.text[:200]}")
         return ok
     except Exception as e:
         print(f"[Directive] Error: {e}")

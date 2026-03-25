@@ -32,9 +32,11 @@ def run(mode: str = "daily"):
     tg_token = get_env("TELEGRAM_BOT_TOKEN")
     tg_chat = get_env("TELEGRAM_CHAT_ID")
     sb_key = get_env("SUPABASE_ANON_KEY")
+    sb_ji1_key = get_env("SUPABASE_JI1_KEY", required=False) or sb_key
     sb_url = cfg["supabase"]["url"]
 
-    print(f"=== Run started (mode={mode}) ===")
+    now_kst = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+    print(f"=== Run started (mode={mode}, KST={now_kst.strftime('%H:%M')}) ===")
 
     # 중복방지 로드
     dedup = SupabaseDedup(sb_url, sb_key, cfg["dedup"]["max_cache_size"])
@@ -113,11 +115,11 @@ def run(mode: str = "daily"):
 
         send_telegram(header + body, tg_token, tg_chat, message_thread_id=2)
 
-        # Directives 등록 (실패해도 봇 동작에 영향 없음)
+        # Directives 등록 → logs.shared_context (ji1-dashboard)
         inserted = 0
         for idx, title, command, link in directive_items:
             note = f"AI뉴스봇 [{idx}]번 항목. 참고: {link}" if link else f"AI뉴스봇 [{idx}]번 항목"
-            if insert_directive(f"[뉴스{idx}] {title}"[:30], command, note, sb_url, sb_key):
+            if insert_directive(f"[뉴스{idx}] {title}"[:30], command, note, sb_url, sb_ji1_key):
                 inserted += 1
         if directive_items:
             print(f"Directives inserted: {inserted}/{len(directive_items)}")

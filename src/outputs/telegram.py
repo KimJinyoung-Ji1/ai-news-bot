@@ -16,9 +16,11 @@ def send_telegram(text: str, bot_token: str, chat_id: str, message_thread_id: in
         }
         if message_thread_id is not None:
             payload["message_thread_id"] = message_thread_id
-        resp = requests.post(url, json=payload, timeout=10)
+        resp = requests.post(url, json=payload, timeout=15)
         if resp.status_code == 200:
+            print(f"[Telegram] OK (thread={message_thread_id})")
             return True
+        print(f"[Telegram] HTML failed ({resp.status_code}): {resp.text[:200]}")
         # HTML 실패 시 plain text 재시도
         payload2 = {
             "chat_id": chat_id,
@@ -27,8 +29,12 @@ def send_telegram(text: str, bot_token: str, chat_id: str, message_thread_id: in
         }
         if message_thread_id is not None:
             payload2["message_thread_id"] = message_thread_id
-        resp2 = requests.post(url, json=payload2, timeout=10)
-        return resp2.status_code == 200
+        resp2 = requests.post(url, json=payload2, timeout=15)
+        if resp2.status_code == 200:
+            print(f"[Telegram] OK (plaintext fallback)")
+            return True
+        print(f"[Telegram] Plaintext also failed ({resp2.status_code}): {resp2.text[:200]}")
+        return False
     except Exception as e:
         print(f"[Telegram] Error: {e}")
         return False
