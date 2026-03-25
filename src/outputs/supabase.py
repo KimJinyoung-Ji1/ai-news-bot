@@ -1,13 +1,16 @@
 import requests
 
 
-# ji1-dashboard Supabase (shared_context 테이블)
+# ji1-dashboard Supabase (shared_context 테이블) - optional
 JI1_SUPABASE_URL = "https://cewxkupsxchbztwoafvq.supabase.co"
 
 
 def insert_directive(title: str, command: str, note: str,
                      supabase_url: str, anon_key: str) -> bool:
-    """AI 뉴스봇 directive를 logs.shared_context에 등록"""
+    """AI 뉴스봇 directive를 logs.shared_context에 등록 (best-effort)"""
+    if not anon_key:
+        print("[Directive] SKIP: no ji1 key")
+        return False
     try:
         resp = requests.post(
             f"{JI1_SUPABASE_URL}/rest/v1/shared_context",
@@ -37,5 +40,5 @@ def insert_directive(title: str, command: str, note: str,
             print(f"[Directive] FAIL ({resp.status_code}): {resp.text[:200]}")
         return ok
     except Exception as e:
-        print(f"[Directive] Error: {e}")
+        print(f"[Directive] Error (non-fatal): {e}")
         return False
