@@ -1,11 +1,7 @@
 sources:
   rss:
-    - name: "Anthropic News"
-      url: "https://www.anthropic.com/rss.xml"
-    - name: "Anthropic Blog"
-      url: "https://www.anthropic.com/blog/rss.xml"
-    - name: "OpenAI Blog"
-      url: "https://openai.com/blog/rss.xml"
+    - name: "OpenAI News"
+      url: "https://openai.com/news/rss.xml"
     - name: "Google AI Blog"
       url: "https://blog.google/technology/ai/rss/"
     - name: "Hacker News AI"
