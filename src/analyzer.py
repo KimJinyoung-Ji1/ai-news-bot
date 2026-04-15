@@ -69,6 +69,83 @@ def _fix_json_newlines(text: str) -> str:
     return ''.join(fixed)
 
 
+def _analyze_claude(articles_text: str, prompt: str, api_key: str) -> dict:
+    """Claude API (Anthropic) 분석 — 1차 엔진."""
+    for attempt in range(2):
+        try:
+            resp = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 4096,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                timeout=90,
+            )
+            if resp.status_code in (429, 529):
+                import time
+                wait = 10 * (attempt + 1)
+                print(f"[Analyzer/Claude] {resp.status_code}, waiting {wait}s...")
+                time.sleep(wait)
+                continue
+            if resp.status_code != 200:
+                print(f"[Analyzer/Claude] Error: {resp.status_code} {resp.text[:200]}")
+                return None
+            text = resp.json()["content"][0]["text"]
+            if "```json" in text:
+                text = text.split("```json")[1].split("```")[0].strip()
+            elif "```" in text:
+                text = text.split("```")[1].split("```")[0].strip()
+            text = _fix_json_newlines(text)
+            return json.loads(text)
+        except (json.JSONDecodeError, KeyError, IndexError) as e:
+            print(f"[Analyzer/Claude] Parse error: {e}")
+            return None
+        except Exception as e:
+            print(f"[Analyzer/Claude] Error: {e}")
+            return None
+    return None
+
+
+def _analyze_gemini(articles_text: str, prompt: str, api_key: str, model: str) -> dict:
+    """Gemini API 분석 — 폴백 엔진."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    for attempt in range(3):
+        try:
+            resp = requests.post(url, json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 8000},
+            }, timeout=90)
+            if resp.status_code in (429, 503, 500):
+                import time
+                wait = 10 * (attempt + 1)
+                print(f"[Analyzer/Gemini] {resp.status_code}, waiting {wait}s... (attempt {attempt+1}/3)")
+                time.sleep(wait)
+                continue
+            if resp.status_code != 200:
+                print(f"[Analyzer/Gemini] Error: {resp.status_code}")
+                return None
+            text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+            if "```json" in text:
+                text = text.split("```json")[1].split("```")[0].strip()
+            elif "```" in text:
+                text = text.split("```")[1].split("```")[0].strip()
+            text = _fix_json_newlines(text)
+            return json.loads(text)
+        except (json.JSONDecodeError, KeyError, IndexError) as e:
+            print(f"[Analyzer/Gemini] Parse error: {e}")
+            return None
+        except Exception as e:
+            print(f"[Analyzer/Gemini] Error: {e}")
+            return None
+    return None
+
+
 def analyze(articles: list, api_key: str, model: str = "gemini-2.5-flash") -> dict:
     if not api_key or not articles:
         return {"items": []}
@@ -81,50 +158,30 @@ def analyze(articles: list, api_key: str, model: str = "gemini-2.5-flash") -> di
         articles_text += f"   링크: {art['link']}\n\n"
 
     prompt = PROMPT_TEMPLATE.format(articles_text=articles_text)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
 
-    for attempt in range(2):
-        try:
-            resp = requests.post(url, json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 8000},
-            }, timeout=60)
-
-            if resp.status_code == 429:
-                import time
-                wait = 5 * (attempt + 1)
-                print(f"[Analyzer] Rate limited, waiting {wait}s...")
-                time.sleep(wait)
-                continue
-
-            if resp.status_code != 200:
-                print(f"[Analyzer] Gemini error: {resp.status_code}")
-                return {"items": []}
-
-            text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-
-            # JSON 추출
-            if "```json" in text:
-                text = text.split("```json")[1].split("```")[0].strip()
-            elif "```" in text:
-                text = text.split("```")[1].split("```")[0].strip()
-
-            text = _fix_json_newlines(text)
-            result = json.loads(text)
-
-            # 줄바꿈 복원
+    # 1차: Claude API (ANTHROPIC_API_KEY)
+    import os
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if anthropic_key:
+        print("[Analyzer] Trying Claude API first...")
+        result = _analyze_claude(articles_text, prompt, anthropic_key)
+        if result and result.get("items"):
             for item in result.get("items", []):
                 for key in ("title", "summary", "apply", "directive"):
                     if isinstance(item.get(key), str):
                         item[key] = item[key].replace("\\n", "\n")
-
+            print(f"[Analyzer] Claude OK: {len(result['items'])} items")
             return result
+        print("[Analyzer] Claude failed, falling back to Gemini...")
 
-        except json.JSONDecodeError as e:
-            print(f"[Analyzer] JSON parse error: {e}")
-            return {"items": []}
-        except Exception as e:
-            print(f"[Analyzer] Error: {e}")
-            return {"items": []}
+    # 2차: Gemini API (폴백)
+    result = _analyze_gemini(articles_text, prompt, api_key, model)
+    if result:
+        for item in result.get("items", []):
+            for key in ("title", "summary", "apply", "directive"):
+                if isinstance(item.get(key), str):
+                    item[key] = item[key].replace("\\n", "\n")
+        print(f"[Analyzer] Gemini OK: {len(result.get('items', []))} items")
+        return result
 
     return {"items": []}
