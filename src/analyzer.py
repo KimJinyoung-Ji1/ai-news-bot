@@ -71,7 +71,9 @@ def _fix_json_newlines(text: str) -> str:
 
 def _analyze_claude(articles_text: str, prompt: str, api_key: str) -> dict:
     """Claude API (Anthropic) 분석 — 1차 엔진."""
-    for attempt in range(2):
+    import time
+    max_retries = 3
+    for attempt in range(max_retries):
         try:
             resp = requests.post(
                 "https://api.anthropic.com/v1/messages",
@@ -87,12 +89,18 @@ def _analyze_claude(articles_text: str, prompt: str, api_key: str) -> dict:
                 },
                 timeout=90,
             )
-            if resp.status_code in (429, 529):
-                import time
-                wait = 10 * (attempt + 1)
-                print(f"[Analyzer/Claude] {resp.status_code}, waiting {wait}s...")
+            if resp.status_code in (500, 529):
+                wait = 2 ** attempt  # 1s → 2s → 4s
+                print(f"[Analyzer/Claude] {resp.status_code}, retry {attempt+1}/{max_retries}, waiting {wait}s...")
                 time.sleep(wait)
                 continue
+            if resp.status_code == 429:
+                print(f"[Analyzer/Claude] 429 rate limit, retry {attempt+1}/{max_retries}, waiting 60s...")
+                time.sleep(60)
+                continue
+            if 400 <= resp.status_code < 500:
+                print(f"[Analyzer/Claude] {resp.status_code} client error, no retry: {resp.text[:200]}")
+                return None
             if resp.status_code != 200:
                 print(f"[Analyzer/Claude] Error: {resp.status_code} {resp.text[:200]}")
                 return None
@@ -109,24 +117,33 @@ def _analyze_claude(articles_text: str, prompt: str, api_key: str) -> dict:
         except Exception as e:
             print(f"[Analyzer/Claude] Error: {e}")
             return None
+    print(f"[Analyzer/Claude] {max_retries}회 재시도 실패")
     return None
 
 
 def _analyze_gemini(articles_text: str, prompt: str, api_key: str, model: str) -> dict:
     """Gemini API 분석 — 폴백 엔진."""
+    import time
+    max_retries = 3
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-    for attempt in range(3):
+    for attempt in range(max_retries):
         try:
             resp = requests.post(url, json={
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {"temperature": 0.3, "maxOutputTokens": 8000},
             }, timeout=90)
-            if resp.status_code in (429, 503, 500):
-                import time
-                wait = 10 * (attempt + 1)
-                print(f"[Analyzer/Gemini] {resp.status_code}, waiting {wait}s... (attempt {attempt+1}/3)")
+            if resp.status_code in (500, 529, 503):
+                wait = 2 ** attempt  # 1s → 2s → 4s
+                print(f"[Analyzer/Gemini] {resp.status_code}, retry {attempt+1}/{max_retries}, waiting {wait}s...")
                 time.sleep(wait)
                 continue
+            if resp.status_code == 429:
+                print(f"[Analyzer/Gemini] 429 rate limit, retry {attempt+1}/{max_retries}, waiting 60s...")
+                time.sleep(60)
+                continue
+            if 400 <= resp.status_code < 500:
+                print(f"[Analyzer/Gemini] {resp.status_code} client error, no retry")
+                return None
             if resp.status_code != 200:
                 print(f"[Analyzer/Gemini] Error: {resp.status_code}")
                 return None
@@ -143,6 +160,7 @@ def _analyze_gemini(articles_text: str, prompt: str, api_key: str, model: str) -
         except Exception as e:
             print(f"[Analyzer/Gemini] Error: {e}")
             return None
+    print(f"[Analyzer/Gemini] {max_retries}회 재시도 실패")
     return None
 
 
