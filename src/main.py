@@ -34,8 +34,10 @@ def run(mode: str = "daily"):
     sb_key = get_env("SUPABASE_ANON_KEY")
     sb_ji1_key = get_env("SUPABASE_JI1_KEY", required=False) or sb_key
     sb_url = cfg["supabase"]["url"]
+    sb_ji1_url = cfg["supabase"]["ji1_url"]
+    tg_thread = cfg.get("telegram", {}).get("message_thread_id")
 
-    now_kst = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+    now_kst = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)
     print(f"=== Run started (mode={mode}, KST={now_kst.strftime('%H:%M')}) ===")
 
     # 중복방지 로드
@@ -67,7 +69,7 @@ def run(mode: str = "daily"):
             send_telegram(
                 f"AI 데일리 ({datetime.datetime.now().strftime('%Y-%m-%d')})\n\n"
                 f"새로운 적용 가능한 업데이트 없음.",
-                tg_token, tg_chat, message_thread_id=2,
+                tg_token, tg_chat, message_thread_id=tg_thread,
             )
         dedup.mark_sent(new_hashes)
         print("=== No new articles ===")
@@ -113,13 +115,13 @@ def run(mode: str = "daily"):
             body += f"등록: [{nums}]번\n"
             body += "Claude Code에서 /directives 로 실행 가능"
 
-        send_telegram(header + body, tg_token, tg_chat, message_thread_id=2)
+        send_telegram(header + body, tg_token, tg_chat, message_thread_id=tg_thread)
 
         # Directives 등록 → logs.shared_context (ji1-dashboard)
         inserted = 0
         for idx, title, command, link in directive_items:
             note = f"AI뉴스봇 [{idx}]번 항목. 참고: {link}" if link else f"AI뉴스봇 [{idx}]번 항목"
-            if insert_directive(f"[뉴스{idx}] {title}"[:30], command, note, sb_url, sb_ji1_key):
+            if insert_directive(f"[뉴스{idx}] {title}"[:30], command, note, sb_ji1_url, sb_ji1_key):
                 inserted += 1
         if directive_items:
             print(f"Directives inserted: {inserted}/{len(directive_items)}")
@@ -127,7 +129,7 @@ def run(mode: str = "daily"):
         lines = [f"AI 업데이트 ({now})\n"]
         for art in new_articles[:10]:
             lines.append(f"- {art['title'][:60]}")
-        send_telegram("\n".join(lines), tg_token, tg_chat, message_thread_id=2)
+        send_telegram("\n".join(lines), tg_token, tg_chat, message_thread_id=tg_thread)
 
     # 중복방지 저장
     dedup.mark_sent(new_hashes)

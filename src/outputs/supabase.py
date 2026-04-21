@@ -1,10 +1,6 @@
 import requests
 
 
-# ji1-dashboard Supabase (shared_context 테이블) - optional
-JI1_SUPABASE_URL = "https://cewxkupsxchbztwoafvq.supabase.co"
-
-
 def insert_directive(title: str, command: str, note: str,
                      supabase_url: str, anon_key: str) -> bool:
     """AI 뉴스봇 directive를 logs.shared_context에 등록 (best-effort)"""
@@ -13,7 +9,7 @@ def insert_directive(title: str, command: str, note: str,
         return False
     try:
         resp = requests.post(
-            f"{JI1_SUPABASE_URL}/rest/v1/shared_context",
+            f"{supabase_url}/rest/v1/shared_context",
             headers={
                 "apikey": anon_key,
                 "Authorization": f"Bearer {anon_key}",

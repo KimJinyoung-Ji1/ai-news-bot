@@ -57,3 +57,6 @@ supabase:
 
 dedup:
   max_cache_size: 500
+
+telegram:
+  message_thread_id: 2

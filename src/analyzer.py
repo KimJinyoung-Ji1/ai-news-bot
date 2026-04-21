@@ -1,6 +1,9 @@
 import json
+import os
 import requests
 
+
+CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 
 PROMPT_TEMPLATE = """너는 시니어 개발자 수준의 기술 브리핑 작성자야.
 
@@ -69,6 +72,14 @@ def _fix_json_newlines(text: str) -> str:
     return ''.join(fixed)
 
 
+def _postprocess_items(result: dict) -> dict:
+    for item in result.get("items", []):
+        for key in ("title", "summary", "apply", "directive"):
+            if isinstance(item.get(key), str):
+                item[key] = item[key].replace("\\n", "\n")
+    return result
+
+
 def _analyze_claude(articles_text: str, prompt: str, api_key: str) -> dict:
     """Claude API (Anthropic) 분석 — 1차 엔진."""
     import time
@@ -83,7 +94,7 @@ def _analyze_claude(articles_text: str, prompt: str, api_key: str) -> dict:
                     "content-type": "application/json",
                 },
                 json={
-                    "model": "claude-haiku-4-5-20251001",
+                    "model": CLAUDE_MODEL,
                     "max_tokens": 4096,
                     "messages": [{"role": "user", "content": prompt}],
                 },
@@ -178,28 +189,19 @@ def analyze(articles: list, api_key: str, model: str = "gemini-2.5-flash") -> di
     prompt = PROMPT_TEMPLATE.format(articles_text=articles_text)
 
     # 1차: Claude API (ANTHROPIC_API_KEY)
-    import os
     anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
     if anthropic_key:
         print("[Analyzer] Trying Claude API first...")
         result = _analyze_claude(articles_text, prompt, anthropic_key)
         if result and result.get("items"):
-            for item in result.get("items", []):
-                for key in ("title", "summary", "apply", "directive"):
-                    if isinstance(item.get(key), str):
-                        item[key] = item[key].replace("\\n", "\n")
             print(f"[Analyzer] Claude OK: {len(result['items'])} items")
-            return result
+            return _postprocess_items(result)
         print("[Analyzer] Claude failed, falling back to Gemini...")
 
     # 2차: Gemini API (폴백)
     result = _analyze_gemini(articles_text, prompt, api_key, model)
     if result:
-        for item in result.get("items", []):
-            for key in ("title", "summary", "apply", "directive"):
-                if isinstance(item.get(key), str):
-                    item[key] = item[key].replace("\\n", "\n")
         print(f"[Analyzer] Gemini OK: {len(result.get('items', []))} items")
-        return result
+        return _postprocess_items(result)
 
     return {"items": []}
