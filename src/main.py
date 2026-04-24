@@ -4,26 +4,75 @@ Usage: python -m src.main --mode daily|realtime
 """
 import argparse
 import datetime
+import difflib
 
 from .config import load_config, get_env
 from .fetchers.rss import fetch_rss_articles
 from .fetchers.web import fetch_web_articles
 from .analyzer import analyze
 from .dedup import article_hash, SupabaseDedup
+from .normalize import normalize_title
+from .cluster import cluster_articles
 from .outputs.telegram import send_telegram
 from .outputs.supabase import insert_directive
 
+_FUZZY_THRESHOLD = 0.90
 
-def filter_relevant(articles: list, keywords: list) -> list:
+
+def _recency_factor(pub_date: datetime.datetime | None) -> float:
+    if pub_date is None:
+        return 0.5
+    now = datetime.datetime.now(datetime.timezone.utc)
+    if pub_date.tzinfo is None:
+        pub_date = pub_date.replace(tzinfo=datetime.timezone.utc)
+    age_days = (now - pub_date).total_seconds() / 86400
+    return max(0.3, 1 - age_days / 7)
+
+
+def filter_relevant(articles: list, keywords: list, max_age_days: int = 14) -> list:
+    now = datetime.datetime.now(datetime.timezone.utc)
     relevant = []
     for art in articles:
+        # P2-B: max_age_days 초과 기사 drop
+        pub_date = art.get("pub_date")
+        if pub_date is not None:
+            if pub_date.tzinfo is None:
+                pub_date = pub_date.replace(tzinfo=datetime.timezone.utc)
+            age_days = (now - pub_date).total_seconds() / 86400
+            if age_days > max_age_days:
+                continue
+
         text = f"{art['title']} {art['summary']}".lower()
-        score = sum(1 for kw in keywords if kw in text)
-        if score >= 1:
-            art["score"] = score
-            relevant.append(art)
+        kw_hits = sum(1 for kw in keywords if kw in text)
+        if kw_hits < 1:
+            continue
+
+        weight = float(art.get("weight", 1.0))
+        rf = _recency_factor(art.get("pub_date"))
+        score = kw_hits * weight * rf
+        art["score"] = score
+        relevant.append(art)
+
     relevant.sort(key=lambda x: x["score"], reverse=True)
     return relevant
+
+
+def _fuzzy_deduplicate(articles: list) -> list:
+    """세션 내 유사 기사 제거 (SequenceMatcher 기반)."""
+    result = []
+    seen_titles = []
+    for art in articles:
+        norm = normalize_title(art.get("title", ""))
+        duplicate = False
+        for seen in seen_titles:
+            ratio = difflib.SequenceMatcher(None, norm, seen).ratio()
+            if ratio >= _FUZZY_THRESHOLD:
+                duplicate = True
+                break
+        if not duplicate:
+            result.append(art)
+            seen_titles.append(norm)
+    return result
 
 
 def run(mode: str = "daily"):
@@ -36,22 +85,42 @@ def run(mode: str = "daily"):
     sb_url = cfg["supabase"]["url"]
     sb_ji1_url = cfg["supabase"]["ji1_url"]
     tg_thread = cfg.get("telegram", {}).get("message_thread_id")
+    dedup_cfg = cfg.get("dedup", {})
+    max_age_days = cfg.get("analysis", {}).get("max_age_days", 14)
 
     now_kst = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)
     print(f"=== Run started (mode={mode}, KST={now_kst.strftime('%H:%M')}) ===")
 
-    # 중복방지 로드
-    dedup = SupabaseDedup(sb_url, sb_key, cfg["dedup"]["max_cache_size"])
-    dedup.load()
+    # 중복방지 로드 — 실패 시 발송 없이 종료
+    dedup = SupabaseDedup(
+        sb_url,
+        sb_key,
+        dedup_cfg.get("max_cache_size", 2000),
+        dedup_cfg.get("window_days", 30),
+    )
+    ok, _ = dedup.load()
+    if not ok:
+        send_telegram(
+            "[AI 뉴스봇] dedup 로드 실패로 이번 런 스킵. 다음 cron 에서 재시도합니다.",
+            tg_token,
+            tg_chat,
+            message_thread_id=tg_thread,
+        )
+        print("=== Aborted: dedup load failed ===")
+        return
 
     # 기사 수집
     rss = fetch_rss_articles(cfg["sources"]["rss"])
     web = fetch_web_articles(cfg["sources"]["web"], cfg["keywords"])
     print(f"Fetched: RSS={len(rss)}, Web={len(web)}")
 
-    # 필터링
-    relevant = filter_relevant(rss + web, cfg["keywords"])
+    # 필터링 (P2-A weight + P2-B recency + max_age_days)
+    relevant = filter_relevant(rss + web, cfg["keywords"], max_age_days=max_age_days)
     print(f"Relevant: {len(relevant)}")
+
+    # P1-D: 세션 내 fuzzy 중복 제거
+    relevant = _fuzzy_deduplicate(relevant)
+    print(f"After fuzzy dedup: {len(relevant)}")
 
     # 중복 제거
     new_articles = []
@@ -75,10 +144,14 @@ def run(mode: str = "daily"):
         print("=== No new articles ===")
         return
 
+    # P2-C: SimHash 클러스터링 — 대표 기사만 LLM 에 전달
+    clustered = cluster_articles(new_articles)
+    print(f"After clustering: {len(clustered)} (was {len(new_articles)})")
+
     # Gemini 분석
     max_articles = cfg["analysis"]["max_articles"]
     model = cfg["analysis"]["model"]
-    result = analyze(new_articles[:max_articles], gemini_key, model)
+    result = analyze(clustered[:max_articles], gemini_key, model)
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
     items = result.get("items", [])

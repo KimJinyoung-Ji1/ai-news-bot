@@ -2,23 +2,32 @@ sources:
   rss:
     - name: "OpenAI News"
       url: "https://openai.com/news/rss.xml"
+      weight: 3.0
     - name: "Google AI Blog"
       url: "https://blog.google/technology/ai/rss/"
+      weight: 2.0
     - name: "Hacker News AI"
       url: "https://hnrss.org/newest?q=anthropic+OR+claude+OR+openai+OR+gemini&points=50"
+      weight: 1.0
     - name: "Vercel Blog"
       url: "https://vercel.com/atom"
+      weight: 2.0
     - name: "Supabase Blog"
       url: "https://supabase.com/blog/rss.xml"
+      weight: 2.0
     - name: "The Verge AI"
       url: "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
+      weight: 1.0
   web:
     - name: "Anthropic News"
       url: "https://www.anthropic.com/news"
+      weight: 3.0
     - name: "Claude Code Changelog"
       url: "https://code.claude.com/docs/en/changelog"
+      weight: 3.0
     - name: "Claude Release Notes"
       url: "https://support.claude.com/en/articles/12138966-release-notes"
+      weight: 3.0
 
 keywords:
   - claude
@@ -46,8 +55,9 @@ keywords:
 
 analysis:
   model: "gemini-2.5-flash"
-  max_articles: 15
+  max_articles: 25
   max_items: 6
+  max_age_days: 14
 
 supabase:
   # mongol-pm: dedup(news_bot_sent) 테이블용
@@ -56,7 +66,8 @@ supabase:
   ji1_url: "https://cewxkupsxchbztwoafvq.supabase.co"
 
 dedup:
-  max_cache_size: 500
+  max_cache_size: 2000
+  window_days: 30
 
 telegram:
   message_thread_id: 2

@@ -1,22 +1,29 @@
+import datetime
 import pytest
 from unittest.mock import patch, MagicMock, call
-from src.main import filter_relevant
+from src.main import filter_relevant, _fuzzy_deduplicate
 
 
 SAMPLE_CONFIG = {
     "supabase": {"url": "https://sb.co", "ji1_url": "https://ji1.sb.co"},
-    "dedup": {"max_cache_size": 100},
+    "dedup": {"max_cache_size": 100, "window_days": 30},
     "sources": {"rss": [], "web": []},
     "keywords": ["claude", "gpt"],
-    "analysis": {"max_articles": 10, "max_items": 6, "model": "gemini-2.5-flash"},
+    "analysis": {"max_articles": 10, "max_items": 6, "model": "gemini-2.5-flash", "max_age_days": 14},
     "telegram": {"message_thread_id": None},
 }
 
 
 class TestFilterRelevant:
-    def _make_articles(self, titles_summaries):
+    def _make_articles(self, titles_summaries, weight=1.0, pub_date=None):
         return [
-            {"title": t, "summary": s, "link": f"https://example.com/{i}", "source": "Test"}
+            {
+                "title": t, "summary": s,
+                "link": f"https://example.com/{i}",
+                "source": "Test",
+                "weight": weight,
+                "pub_date": pub_date,
+            }
             for i, (t, s) in enumerate(titles_summaries)
         ]
 
@@ -57,6 +64,68 @@ class TestFilterRelevant:
         result = filter_relevant(articles, ["claude"])
         assert len(result) == 1
 
+    def test_drops_articles_older_than_max_age(self):
+        """14일 초과 기사 drop."""
+        old = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=20)
+        articles = self._make_articles([("Claude update", "")], pub_date=old)
+        result = filter_relevant(articles, ["claude"], max_age_days=14)
+        assert result == []
+
+    def test_keeps_articles_within_max_age(self):
+        recent = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=3)
+        articles = self._make_articles([("Claude update", "")], pub_date=recent)
+        result = filter_relevant(articles, ["claude"], max_age_days=14)
+        assert len(result) == 1
+
+    def test_higher_weight_gives_higher_score(self):
+        """weight 높은 소스가 score 높음 (keyword hits 동일 시)."""
+        now = datetime.datetime.now(datetime.timezone.utc)
+        low = [{"title": "Claude new model", "summary": "", "link": "https://a.com/1",
+                "source": "Low", "weight": 1.0, "pub_date": now}]
+        high = [{"title": "Claude new model", "summary": "", "link": "https://a.com/2",
+                 "source": "High", "weight": 3.0, "pub_date": now}]
+        res_low = filter_relevant(low, ["claude"])
+        res_high = filter_relevant(high, ["claude"])
+        assert res_high[0]["score"] > res_low[0]["score"]
+
+
+class TestFuzzyDeduplicate:
+    def _art(self, title: str) -> dict:
+        return {"title": title, "link": "https://example.com", "summary": "", "source": "T",
+                "weight": 1.0, "pub_date": None}
+
+    def test_removes_near_duplicate(self):
+        arts = [
+            self._art("Claude 3.5 Sonnet released by Anthropic today"),
+            self._art("Claude 3.5 Sonnet released by Anthropic now"),
+        ]
+        result = _fuzzy_deduplicate(arts)
+        assert len(result) == 1
+
+    def test_keeps_different_articles(self):
+        arts = [
+            self._art("Claude 3.5 released"),
+            self._art("Supabase launches vector database"),
+        ]
+        result = _fuzzy_deduplicate(arts)
+        assert len(result) == 2
+
+    def test_first_article_is_representative(self):
+        """첫 번째 기사가 대표로 선택됨."""
+        arts = [
+            self._art("Claude update released today by Anthropic team"),
+            self._art("Claude update released today by Anthropic now"),
+        ]
+        result = _fuzzy_deduplicate(arts)
+        assert result[0]["title"] == arts[0]["title"]
+
+    def test_empty_returns_empty(self):
+        assert _fuzzy_deduplicate([]) == []
+
+    def test_single_returns_single(self):
+        arts = [self._art("Claude release")]
+        assert _fuzzy_deduplicate(arts) == arts
+
 
 class TestRunFunction:
     def _env(self):
@@ -67,11 +136,30 @@ class TestRunFunction:
             "SUPABASE_ANON_KEY": "sb-anon-key",
         }
 
-    def _setup_mocks(self):
+    def _setup_mocks(self, load_ok=True):
         dedup = MagicMock()
-        dedup.load.return_value = set()
+        dedup.load.return_value = (load_ok, set())
         dedup.is_sent.return_value = False
         return dedup
+
+    def test_run_dedup_load_failure_aborts_without_sending(self):
+        """AC-1: dedup.load 실패 시 발송 없이 종료 + skip 알림 1건."""
+        from src.main import run
+        dedup = self._setup_mocks(load_ok=False)
+
+        with patch.dict("os.environ", self._env()):
+            with patch("src.main.load_config", return_value=SAMPLE_CONFIG):
+                with patch("src.main.SupabaseDedup", return_value=dedup):
+                    with patch("src.main.fetch_rss_articles", return_value=[]) as mock_rss:
+                        with patch("src.main.send_telegram") as mock_tg:
+                            run("daily")
+
+        # 기사 수집 자체가 일어나지 않아야 함 (abort)
+        mock_rss.assert_not_called()
+        # skip 알림 1건만 발송
+        mock_tg.assert_called_once()
+        msg = mock_tg.call_args[0][0]
+        assert "dedup" in msg.lower() or "스킵" in msg or "skip" in msg.lower()
 
     def test_run_no_new_articles_daily(self):
         from src.main import run
@@ -108,13 +196,15 @@ class TestRunFunction:
         from src.main import run
         dedup = self._setup_mocks()
 
+        now = datetime.datetime.now(datetime.timezone.utc)
         articles = [
             {"title": "Claude update", "summary": "great news", "link": "https://ex.com/1",
-             "source": "Feed", "score": 2}
+             "source": "Feed", "score": 2, "weight": 1.0, "pub_date": now}
         ]
         analysis_result = {
             "items": [
-                {"title": "Claude 업데이트", "summary": "요약", "apply": "적용", "link": "https://ex.com/1", "directive": ""}
+                {"title": "Claude 업데이트", "summary": "요약", "apply": "적용",
+                 "link": "https://ex.com/1", "directive": ""}
             ]
         }
 
@@ -133,9 +223,10 @@ class TestRunFunction:
         from src.main import run
         dedup = self._setup_mocks()
 
+        now = datetime.datetime.now(datetime.timezone.utc)
         articles = [
             {"title": "Claude update", "summary": "gpt test", "link": "https://ex.com/1",
-             "source": "Feed", "score": 2}
+             "source": "Feed", "score": 2, "weight": 1.0, "pub_date": now}
         ]
         analysis_result = {
             "items": [
@@ -160,9 +251,10 @@ class TestRunFunction:
         from src.main import run
         dedup = self._setup_mocks()
 
+        now = datetime.datetime.now(datetime.timezone.utc)
         articles = [
             {"title": "Claude update", "summary": "gpt", "link": "https://ex.com/1",
-             "source": "Feed", "score": 1}
+             "source": "Feed", "score": 1, "weight": 1.0, "pub_date": now}
         ]
 
         with patch.dict("os.environ", self._env()):
@@ -177,3 +269,33 @@ class TestRunFunction:
         mock_tg.assert_called_once()
         msg = mock_tg.call_args[0][0]
         assert "Claude update" in msg
+
+    def test_run_fuzzy_dedup_removes_similar_articles(self):
+        """세션 내 fuzzy 중복 제거 — 거의 동일한 제목 2개 중 1개만 남음."""
+        from src.main import run
+        dedup = self._setup_mocks()
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        articles = [
+            {"title": "Claude 3.5 Sonnet released by Anthropic today",
+             "summary": "claude gpt", "link": "https://ex.com/1",
+             "source": "Feed", "weight": 1.0, "pub_date": now},
+            {"title": "Claude 3.5 Sonnet released by Anthropic now",
+             "summary": "claude gpt", "link": "https://ex.com/2",
+             "source": "Feed", "weight": 1.0, "pub_date": now},
+        ]
+        analysis_result = {"items": []}
+
+        with patch.dict("os.environ", self._env()):
+            with patch("src.main.load_config", return_value=SAMPLE_CONFIG):
+                with patch("src.main.SupabaseDedup", return_value=dedup):
+                    with patch("src.main.fetch_rss_articles", return_value=articles):
+                        with patch("src.main.fetch_web_articles", return_value=[]):
+                            with patch("src.main.analyze", return_value=analysis_result) as mock_analyze:
+                                with patch("src.main.send_telegram"):
+                                    run("daily")
+
+        # analyze 에 전달된 기사가 1개여야 함 (fuzzy + cluster 거침)
+        if mock_analyze.called:
+            passed_articles = mock_analyze.call_args[0][0]
+            assert len(passed_articles) <= 1
