@@ -16,10 +16,10 @@ SAMPLE_RESULT = {
     "items": [
         {
             "title": "Claude 4 출시",
-            "summary": "Anthropic이 Claude 4를 출시했습니다. 성능이 크게 향상됐습니다.",
-            "apply": "API 호출 시 모델명 업데이트 필요",
+            "summary": "Anthropic이 Claude 4를 2026년 5월 출시했다고 공식 발표했다. 이전 세대 대비 추론 정확도가 30% 개선되고 컨텍스트 윈도우가 두 배로 확장되었다. 우리 mongol-pm 채팅 엔진의 CLAUDE_MODEL 상수를 즉시 업데이트하면 성능 향상 효과를 즉각 체감할 수 있다. 다음 배포 사이클에 모델 상수 변경 적용 권장.",
+            "apply": "[YES] src/analyzer.py: CLAUDE_MODEL 상수를 claude-4로 변경하고 배포 검증 수행",
             "link": "https://example.com/1",
-            "directive": "src/analyzer.py의 CLAUDE_MODEL 상수를 claude-4로 변경",
+            "directive": "src/analyzer.py의 CLAUDE_MODEL 상수를 claude-4로 변경하라",
         }
     ]
 }

@@ -1,6 +1,8 @@
+import datetime
+import json
 import pytest
 from unittest.mock import patch, MagicMock, call
-from src.dedup import article_hash, SupabaseDedup
+from src.dedup import article_hash, LocalFileDedup
 
 
 # ── article_hash 기본 테스트 ──────────────────────────────────────────────────
@@ -89,122 +91,137 @@ def test_hash_fbclid_stripped():
     assert h1 == h2
 
 
-# ── SupabaseDedup ────────────────────────────────────────────────────────────
+# ── LocalFileDedup (로컬 파일 기반, 외부 DB 미사용) ──────────────────────────────
 
-class TestSupabaseDedup:
-    def _make_dedup(self):
-        return SupabaseDedup("https://example.supabase.co", "anon-key", max_size=100)
-
-    def test_init(self):
-        d = self._make_dedup()
-        assert d.max_size == 100
-        assert d._cache == set()
-
-    def test_is_sent_false_before_load(self):
-        d = self._make_dedup()
-        assert d.is_sent("abc") is False
-
-    def test_is_sent_true_after_mark(self):
-        d = self._make_dedup()
-        d._cache.add("myhash")
-        assert d.is_sent("myhash") is True
-
-    def test_load_success_returns_true_and_cache(self):
-        """200 응답 후 (True, cache) 반환."""
-        d = self._make_dedup()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = [{"hash": "aaa"}, {"hash": "bbb"}]
-        with patch("requests.get", return_value=mock_resp):
-            ok, cache = d.load()
+class TestLocalFileDedup:
+    def test_load_missing_file_returns_empty_ok(self, tmp_path):
+        """파일이 없으면 빈 캐시로 정상 진행 (abort 없음)."""
+        d = LocalFileDedup(str(tmp_path / "sent.json"))
+        ok, cache = d.load()
         assert ok is True
-        assert "aaa" in cache
-        assert "bbb" in cache
-
-    def test_load_500_returns_false_empty_set(self, capsys):
-        """500 응답 3회 → (False, set()) 반환 — AC-1."""
-        d = self._make_dedup()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 500
-        with patch("requests.get", return_value=mock_resp), \
-             patch("time.sleep"):
-            ok, cache = d.load()
-        assert ok is False
         assert cache == set()
-        captured = capsys.readouterr()
-        assert "Load failed" in captured.out
 
-    def test_load_retries_3_times_on_failure(self):
-        """500 응답 시 최대 3회 시도."""
-        d = self._make_dedup()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 500
-        with patch("requests.get", return_value=mock_resp) as mock_get, \
-             patch("time.sleep"):
-            d.load()
-        assert mock_get.call_count == 3
+    def test_mark_then_is_sent_persists(self, tmp_path):
+        """mark_sent 후 새 인스턴스로 load 해도 기억된다 (파일 영속)."""
+        path = str(tmp_path / "sent.json")
+        d = LocalFileDedup(path)
+        d.load()
+        d.mark_sent(["hashA", "hashB"])
+        assert d.is_sent("hashA")
 
-    def test_load_exception_returns_false(self, capsys):
-        """네트워크 예외 3회 → (False, set())."""
-        d = self._make_dedup()
-        with patch("requests.get", side_effect=Exception("net error")), \
-             patch("time.sleep"):
-            ok, cache = d.load()
-        assert ok is False
-        assert cache == set()
-        captured = capsys.readouterr()
-        assert "Load error" in captured.out
+        d2 = LocalFileDedup(path)
+        d2.load()
+        assert d2.is_sent("hashA")
+        assert d2.is_sent("hashB")
+        assert not d2.is_sent("hashZ")
 
-    def test_load_succeeds_on_second_attempt(self):
-        """1회 실패 후 2회 성공 → (True, cache)."""
-        d = self._make_dedup()
-        fail_resp = MagicMock()
-        fail_resp.status_code = 500
-        ok_resp = MagicMock()
-        ok_resp.status_code = 200
-        ok_resp.json.return_value = [{"hash": "xyz"}]
-        with patch("requests.get", side_effect=[fail_resp, ok_resp]), \
-             patch("time.sleep"):
-            ok, cache = d.load()
+    def test_window_evicts_old_hashes(self, tmp_path):
+        """window_days 보다 오래된 해시는 load 시 제외된다."""
+        path = tmp_path / "sent.json"
+        old = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=100)).isoformat()
+        recent = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        path.write_text(json.dumps({"old": old, "recent": recent}), encoding="utf-8")
+
+        d = LocalFileDedup(str(path), window_days=45)
+        d.load()
+        assert d.is_sent("recent")
+        assert not d.is_sent("old")
+
+    def test_corrupt_file_starts_empty(self, tmp_path):
+        """손상된 JSON 파일이어도 빈 캐시로 진행 (발송 중단 없음)."""
+        path = tmp_path / "sent.json"
+        path.write_text("{ this is not valid json ", encoding="utf-8")
+        d = LocalFileDedup(str(path))
+        ok, cache = d.load()
         assert ok is True
-        assert "xyz" in cache
+        assert cache == set()
 
-    def test_mark_sent_success(self):
-        d = self._make_dedup()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 201
-        with patch("requests.post", return_value=mock_resp):
-            d.mark_sent(["hash1", "hash2"])
-        assert "hash1" in d._cache
-        assert "hash2" in d._cache
+    def test_max_size_evicts_oldest(self, tmp_path):
+        """max_size 초과 시 가장 오래된 해시부터 제거된다."""
+        path = str(tmp_path / "sent.json")
+        d = LocalFileDedup(path, max_size=2)
+        d.load()
+        d.mark_sent(["h1"])
+        d.mark_sent(["h2"])
+        d.mark_sent(["h3"])  # h1 이 밀려남
+        assert len(d._cache) == 2
+        assert d.is_sent("h3")
+        assert not d.is_sent("h1")
 
-    def test_mark_sent_conflict_409(self):
-        d = self._make_dedup()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 409
-        with patch("requests.post", return_value=mock_resp):
-            d.mark_sent(["hash1"])
-        assert "hash1" in d._cache
 
-    def test_mark_sent_failure_logged(self, capsys):
-        d = self._make_dedup()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 400
-        with patch("requests.post", return_value=mock_resp):
-            d.mark_sent(["hash1"])
-        captured = capsys.readouterr()
-        assert "Insert failed" in captured.out
+# ── LocalFileDedup: persistent fuzzy title dedup ─────────────────────────────
 
-    def test_mark_sent_exception_logged(self, capsys):
-        d = self._make_dedup()
-        with patch("requests.post", side_effect=Exception("net error")):
-            d.mark_sent(["hash1"])
-        captured = capsys.readouterr()
-        assert "Insert error" in captured.out
-        assert "hash1" in d._cache
+class TestLocalFileDedupTitles:
+    def _make(self, tmp_path, threshold: float = 0.75) -> LocalFileDedup:
+        path = str(tmp_path / "sent_hashes.json")
+        titles_file = str(tmp_path / "sent_titles.json")
+        d = LocalFileDedup(path, titles_file=titles_file, similarity_threshold=threshold)
+        d.load()
+        return d
 
-    def test_mark_sent_empty_list(self):
-        d = self._make_dedup()
-        with patch("requests.post") as mock_post:
-            d.mark_sent([])
-        mock_post.assert_not_called()
+    def test_is_similar_blocks_near_duplicate(self, tmp_path):
+        """저장된 제목과 유사한 제목을 차단한다."""
+        from src.normalize import normalize_title
+        d = self._make(tmp_path)
+        # "Claude 4.7 Opus 출시" 저장
+        norm1 = normalize_title("Claude 4.7 Opus 출시")
+        d.mark_sent(["hash_a"], titles=[norm1])
+
+        # "Anthropic releases Claude 4.7" 신규 → 완전히 다른 언어이지만 임계치 0.75 기준 확인
+        norm2 = normalize_title("claude 47 opus 출시")  # 거의 동일 → 차단
+        assert d.is_similar(norm2) is True
+
+    def test_is_similar_allows_distinct(self, tmp_path):
+        """완전히 다른 주제의 제목은 통과시킨다."""
+        from src.normalize import normalize_title
+        d = self._make(tmp_path)
+        norm1 = normalize_title("Claude 4.7 출시")
+        d.mark_sent(["hash_a"], titles=[norm1])
+
+        norm2 = normalize_title("GPT-5 발표")
+        assert d.is_similar(norm2) is False
+
+    def test_window_filter_drops_expired_titles(self, tmp_path):
+        """50일 전 타임스탬프 항목은 캐시에서 제외된다."""
+        titles_file = tmp_path / "sent_titles.json"
+        old_ts = (
+            datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=50)
+        ).isoformat()
+        titles_file.write_text(
+            json.dumps({"claude 47 opus 출시": old_ts}), encoding="utf-8"
+        )
+        hashes_file = str(tmp_path / "sent_hashes.json")
+        d = LocalFileDedup(
+            hashes_file,
+            window_days=45,
+            titles_file=str(titles_file),
+            similarity_threshold=0.75,
+        )
+        d.load()
+        # 50일 전 항목은 window 45일 밖 → 캐시에서 제외
+        assert len(d._title_cache) == 0
+        assert d.is_similar("claude 47 opus 출시") is False
+
+    def test_titles_persist_across_instances(self, tmp_path):
+        """mark_sent(titles=...) 후 새 인스턴스로 load 해도 유사도 차단이 유지된다."""
+        from src.normalize import normalize_title
+        hashes_file = str(tmp_path / "sent_hashes.json")
+        titles_file = str(tmp_path / "sent_titles.json")
+
+        d1 = LocalFileDedup(hashes_file, titles_file=titles_file, similarity_threshold=0.75)
+        d1.load()
+        norm = normalize_title("Claude 4.7 Opus 출시")
+        d1.mark_sent(["hash_x"], titles=[norm])
+
+        d2 = LocalFileDedup(hashes_file, titles_file=titles_file, similarity_threshold=0.75)
+        d2.load()
+        # 거의 동일한 제목 → 차단
+        assert d2.is_similar(normalize_title("claude 47 opus 출시")) is True
+
+    def test_no_titles_file_is_similar_always_false(self, tmp_path):
+        """titles_file 미설정 시 is_similar는 항상 False (하위 호환)."""
+        path = str(tmp_path / "sent_hashes.json")
+        d = LocalFileDedup(path)  # titles_file 없음
+        d.load()
+        d.mark_sent(["h"], titles=["some title"])
+        assert d.is_similar("some title") is False

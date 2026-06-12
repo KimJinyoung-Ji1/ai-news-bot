@@ -60,10 +60,21 @@ def cluster_articles(articles: list) -> list:
     for idx, cid in enumerate(assigned):
         clusters.setdefault(cid, []).append(articles[idx])
 
+    _EPOCH = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+
+    def _sort_key(article: dict):
+        # 점수가 같으면(예: 둘 다 recency floor 0.3) 최신 발행일을 대표로 선택
+        pd = article.get("pub_date")
+        if pd is None:
+            pd = _EPOCH
+        elif pd.tzinfo is None:
+            pd = pd.replace(tzinfo=datetime.timezone.utc)
+        return (_article_score(article), pd)
+
     result = []
     for cid in sorted(clusters):
         members = clusters[cid]
-        best = max(members, key=_article_score)
+        best = max(members, key=_sort_key)
         result.append(best)
 
     return result

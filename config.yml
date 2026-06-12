@@ -18,6 +18,100 @@ sources:
     - name: "The Verge AI"
       url: "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
       weight: 1.0
+    # 신규 추가 — 스택 직결 5개 (Vercel/Supabase는 기존과 URL 다른 엔드포인트)
+    - name: "Hugging Face Blog"
+      url: "https://huggingface.co/blog/feed.xml"
+      weight: 2.5
+    - name: "LangChain Blog"
+      url: "https://blog.langchain.dev/rss.xml"
+      weight: 2.0
+    - name: "Supabase Blog Feed"
+      url: "https://supabase.com/feed.xml"
+      weight: 2.0
+    - name: "DeepMind Blog"
+      url: "https://deepmind.google/blog/rss.xml"
+      weight: 2.0
+    # 신규 추가 — 커뮤니티·한국 3개
+    - name: "Reddit r/LocalLLaMA"
+      url: "https://www.reddit.com/r/LocalLLaMA/.rss"
+      weight: 1.5
+    - name: "AI타임스"
+      url: "https://www.aitimes.com/rss/allArticle.xml"
+      weight: 1.5
+    - name: "카카오 테크블로그"
+      url: "https://tech.kakao.com/feed/"
+      weight: 1.5
+    # wave 5 — 2026-05-30 PM "최근 ai 뉴스 고쳐라" → 개발자 도구 편중 차단
+    # 한국 비즈니스·일반 AI 매체 추가 (비개발자 사업가 관점 다양성)
+    - name: "ZDNet Korea AI"
+      url: "https://feeds.feedburner.com/zdkorea"
+      weight: 2.0
+    - name: "디지털데일리"
+      url: "http://www.ddaily.co.kr/news/rss/all.xml"
+      weight: 1.8
+    - name: "Bloter"
+      url: "https://www.bloter.net/feed"
+      weight: 1.8
+    - name: "IT조선"
+      url: "https://it.chosun.com/site/data/rss/rss.xml"
+      weight: 1.8
+    - name: "전자신문 AI"
+      url: "https://rss.etnews.com/Section902.xml"
+      weight: 1.8
+    - name: "매일경제 IT"
+      url: "https://www.mk.co.kr/rss/30000023/"
+      weight: 1.8
+    - name: "한국경제 IT"
+      url: "https://www.hankyung.com/feed/it"
+      weight: 1.8
+    - name: "MIT Technology Review AI"
+      url: "https://www.technologyreview.com/feed/topic/artificial-intelligence/"
+      weight: 2.5
+    - name: "VentureBeat AI"
+      url: "https://venturebeat.com/category/ai/feed/"
+      weight: 2.0
+    # wave 2 — 개인 연구자 블로그 + Anthropic Status RSS
+    - name: "Anthropic Status"
+      url: "https://status.anthropic.com/history.atom"
+      weight: 2.5
+    # wave 3 — Anthropic 공식 GitHub 릴리스/커밋 (PM 2026-05-17 지시)
+    - name: "Claude Code Releases"
+      url: "https://github.com/anthropics/claude-code/releases.atom"
+      weight: 4.0
+    - name: "Anthropic Python SDK Releases"
+      url: "https://github.com/anthropics/anthropic-sdk-python/releases.atom"
+      weight: 3.0
+    - name: "Anthropic TypeScript SDK Releases"
+      url: "https://github.com/anthropics/anthropic-sdk-typescript/releases.atom"
+      weight: 3.0
+    - name: "Anthropic Cookbook"
+      url: "https://github.com/anthropics/anthropic-cookbook/commits/main.atom"
+      weight: 2.5
+    # wave 4 — 2026-05-28 PM 지시 "구글 제미나이·GPT·claude 공식 사이트 참조 강화"
+    - name: "Google Gemini Product Blog"
+      url: "https://blog.google/products/gemini/rss/"
+      weight: 4.0
+    - name: "Google AI Developers Blog"
+      url: "https://developers.googleblog.com/feeds/posts/default?alt=rss"
+      weight: 3.5
+    - name: "OpenAI Blog (RSS)"
+      url: "https://openai.com/blog/rss.xml"
+      weight: 4.0
+    - name: "Simon Willison"
+      url: "https://simonwillison.net/atom/everything/"
+      weight: 2.5
+    - name: "Sebastian Raschka"
+      url: "https://magazine.sebastianraschka.com/feed"
+      weight: 2.5
+    - name: "Lilian Weng"
+      url: "https://lilianweng.github.io/index.xml"
+      weight: 2.5
+    - name: "Jay Alammar"
+      url: "https://jalammar.github.io/feed.xml"
+      weight: 2.0
+    - name: "Eugene Yan"
+      url: "https://eugeneyan.com/rss/"
+      weight: 2.0
   web:
     - name: "Anthropic News"
       url: "https://www.anthropic.com/news"
@@ -28,6 +122,51 @@ sources:
     - name: "Claude Release Notes"
       url: "https://support.claude.com/en/articles/12138966-release-notes"
       weight: 3.0
+    # wave 2 — Anthropic 공식 + OpenAI 공식 web scrape
+    - name: "Anthropic Engineering"
+      url: "https://www.anthropic.com/engineering"
+      weight: 3.0
+    - name: "Anthropic Research"
+      url: "https://www.anthropic.com/research"
+      weight: 3.0
+    # wave 3 — Anthropic 공식 web 추가 (PM 2026-05-17 지시)
+    - name: "Claude API Docs Changelog"
+      url: "https://docs.claude.com/en/changelog"
+      weight: 3.5
+    - name: "Anthropic Customers"
+      url: "https://www.anthropic.com/customers"
+      weight: 2.5
+    - name: "OpenAI Research"
+      url: "https://openai.com/research"
+      weight: 2.5
+    - name: "OpenAI Developers Changelog"
+      url: "https://platform.openai.com/docs/changelog"
+      weight: 2.5
+    - name: "ChatGPT Release Notes"
+      url: "https://help.openai.com/en/articles/6825453-chatgpt-release-notes"
+      weight: 2.0
+    - name: "HuggingFace Daily Papers"
+      url: "https://huggingface.co/papers"
+      weight: 2.5
+    # wave 2 — Karpathy blog (RSS 없음, web scrape)
+    - name: "Andrej Karpathy Blog"
+      url: "https://karpathy.ai/blog/"
+      weight: 3.0
+
+  arxiv:
+    enabled: true
+    categories: [cs.AI, cs.CL, cs.LG]
+    days: 7
+    max_per_fetch: 20
+  hackernews:
+    enabled: true
+    keywords: [Claude, Anthropic, OpenAI, LLM, MCP, "Next.js", Supabase, Vercel]
+    max_per_fetch: 30
+  github_trending:
+    enabled: true
+    languages: [Python, TypeScript, JavaScript]
+    keywords: [ai, llm, claude, mcp, agent]
+    max_per_fetch: 20
 
 keywords:
   - claude
@@ -52,22 +191,66 @@ keywords:
   - nextjs
   - llm
   - coding assistant
+  # wave 5 — 2026-05-30 비개발자 사업가 관점 다양성
+  # 한국어 일반 AI / 비즈니스 / 응용사례 키워드 (filter_relevant 가 lower()는 영어만 영향, 한글은 그대로 매칭)
+  - 인공지능
+  - 생성형 ai
+  - 생성형ai
+  - 에이전트
+  - 자동화
+  - 챗봇
+  - 거대언어모델
+  - ai 도입
+  - ai도입
+  - ai 서비스
+  - 디지털전환
+  - dx
+  - ai 정책
+  - ai 규제
+  - ai 투자
+  - ai 스타트업
+  - 정부 지원
+  - 지원사업
+  - 사업화
+  - 하이퍼클로바
+  - 네이버 ai
+  - 카카오 ai
+  - 삼성 ai
+  - 비즈니스 ai
+  - 엔터프라이즈
+  - rag
+  - 음성 ai
+  - 영상 ai
 
 analysis:
   model: "gemini-2.5-flash"
-  max_articles: 25
-  max_items: 6
+  max_articles: 30                       # 25→30 (다양성 확보 위해 LLM 입력 풀 확대)
+  max_items: 6        # AUD-14: analyzer 프롬프트 "최대 6개"와 통일 (2026-06-12)
   max_age_days: 14
-
-supabase:
-  # mongol-pm: dedup(news_bot_sent) 테이블용
-  url: "https://rxylsjqviebynegvpkem.supabase.co"
-  # ji1-dashboard: shared_context(directive) 테이블용
-  ji1_url: "https://cewxkupsxchbztwoafvq.supabase.co"
+  freshness_days: 3   # 신선도 하드 컷 — pub_date 가 3일 초과 과거인 기사는 스코어링 전 drop (2026-06-12)
+  max_per_source: 2   # 한 벤더(Anthropic 등) 독점 방지 — 소스 다양성
 
 dedup:
-  max_cache_size: 2000
-  window_days: 30
+  max_cache_size: 3000
+  window_days: 60                        # 45→60 (2026-06-01 빈도 제한 강화: 더 오래 기억)
+  file: "data/sent_hashes.json"         # 로컬 JSON 파일 (외부 DB 미사용)
+  titles_file: "data/sent_titles.json"  # 제목 fuzzy dedup 영구 이력
+  similarity_threshold: 0.50            # 0.55→0.50 (2026-06-05 PM 12955 "10번도넘게 또 떠" — 더 더 강한 fuzzy 차단)
+  # 2026-06-04~06-05 PM 12782·12955 — 특정 콘텐츠 영구 차단 키워드 (normalize 후 부분일치 1건이면 발송 제외)
+  deny_keywords:
+    - "claude design"
+    - "클로드 디자인"
+    - "claude cowork"
+    - "클로드 코워크"
+    - "anthropic claude design labs"
+    - "claude code 엔터프라이즈"
+    - "claude code enterprise"
+    - "claude code 엔터"
+    - "엔터프라이즈 버전 출시"
+    - "anthropic ai 기반 디자인 도구"
+
+directive:
+  file: "data/directives.json"    # 작업지시 로컬 저장 (supabase 완전 미사용)
 
 telegram:
   message_thread_id: 2

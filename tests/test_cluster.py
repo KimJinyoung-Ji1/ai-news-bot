@@ -74,9 +74,10 @@ class TestClusterArticles:
         assert result[0]["weight"] == 3.0
 
     def test_newer_article_preferred_when_weight_equal(self):
-        """weight 동일 시 더 최신 기사가 대표."""
-        old = datetime.datetime(2026, 4, 1, tzinfo=datetime.timezone.utc)
-        new = datetime.datetime(2026, 4, 23, tzinfo=datetime.timezone.utc)
+        """weight 동일 시 더 최신 기사가 대표 (recency floor 구간에서도 보장)."""
+        now = datetime.datetime.now(datetime.timezone.utc)
+        old = now - datetime.timedelta(days=22)
+        new = now - datetime.timedelta(days=1)
         a_old = _make_article("Supabase new vector search database launched now", weight=1.0, pub_date=old)
         a_new = _make_article("Supabase new vector search database launched today", weight=1.0, pub_date=new)
         result = cluster_articles([a_old, a_new])
